@@ -38,6 +38,9 @@ char m_ip_address_string[16] = "127.0.0.1";
 uint16_t m_custom_port = 0; /* 0 means use default */
 bool m_ip_explicitly_set = false; /* track if user explicitly set IP */
 
+char m_device_path[256] = "";      /* path to an SPDM char device (--dev) */
+bool m_use_device = false;         /* true when talking to a char device */
+
 #ifdef _WIN32
 struct in_addr m_ip_address = { { { 127, 0, 0, 1 } } };
 #else
@@ -50,6 +53,9 @@ void print_usage(const char *name)
     printf("   [--tcp_sub RI|NO_RI]\n");
     printf("   [--ip <ip_address>]\n");
     printf("   [--port <port_number>]\n");
+#ifndef _WIN32
+    printf("   [--dev <device_path>]\n");
+#endif /* !_WIN32 */
     printf("   [--ver 1.0|1.1|1.2|1.3|1.4]\n");
     printf("   [--sec_ver 1.0|1.1|1.2]\n");
     printf("   [--decap_tdisp\n");
@@ -104,6 +110,10 @@ void print_usage(const char *name)
         "           For Responder, it is the address to bind to. If not specified, the Responder binds to all interfaces.\n");
     printf(
         "   [--port] is the port number for the connection. By default, 2323 is used for MCTP/PCI_DOE and 4194 is used for TCP.\n");
+#ifndef _WIN32
+    printf(
+        "   [--dev] is the path to an SPDM character device (e.g. /dev/spdm0). Requester only; requires --trans MCTP. Bypasses the network socket.\n");
+#endif /* !_WIN32 */
     printf("   [--ver] is version. By default, all are used.\n");
     printf(
         "   [--sec_ver] is secured message version. By default, all are used.\n");
@@ -781,6 +791,29 @@ void process_args(char *program_name, int argc, char *argv[])
                 exit(0);
             }
         }
+
+#ifndef _WIN32
+        if (strcmp(argv[0], "--dev") == 0) {
+            if (argc >= 2) {
+                if (strlen(argv[1]) >= sizeof(m_device_path)) {
+                    printf("invalid --dev %s (too long)\n", argv[1]);
+                    print_usage(program_name);
+                    exit(0);
+                }
+                strncpy(m_device_path, argv[1], sizeof(m_device_path) - 1);
+                m_device_path[sizeof(m_device_path) - 1] = '\0';
+                m_use_device = true;
+                printf("dev - %s\n", m_device_path);
+                argc -= 2;
+                argv += 2;
+                continue;
+            } else {
+                printf("invalid --dev\n");
+                print_usage(program_name);
+                exit(0);
+            }
+        }
+#endif /* !_WIN32 */
 
         if (strcmp(argv[0], "--port") == 0) {
             if (argc >= 2) {
@@ -1636,6 +1669,15 @@ void process_args(char *program_name, int argc, char *argv[])
         exit(0);
     }
 
+#ifndef _WIN32
+    /* Device mode (--dev) only supports MCTP message packaging. */
+    if (m_use_device &&
+        m_use_transport_layer != SOCKET_TRANSPORT_TYPE_MCTP) {
+        printf("--dev requires --trans MCTP\n");
+        print_usage(program_name);
+        exit(0);
+    }
+#endif /* !_WIN32 */
 
     /* Open PCAP file as last option, after the user indicates transport type.*/
 

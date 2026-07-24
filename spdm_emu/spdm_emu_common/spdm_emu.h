@@ -27,6 +27,8 @@ extern uint32_t m_use_tcp_role_inquiry;
 extern char m_ip_address_string[16];
 extern uint16_t m_custom_port;
 extern bool m_ip_explicitly_set;
+extern char m_device_path[256];
+extern bool m_use_device;
 extern uint8_t m_use_version;
 extern uint8_t m_use_secured_message_version;
 extern bool m_decap_tdisp;

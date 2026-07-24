@@ -17,6 +17,9 @@ void *m_fips_selftest_context;
 #endif /*LIBSPDM_FIPS_MODE*/
 void *m_scratch_buffer;
 SOCKET m_socket;
+#ifndef _WIN32
+int m_device_fd = -1;   /* fd for --dev char-device mode; -1 = socket mode */
+#endif /* !_WIN32 */
 
 bool communicate_platform_data(SOCKET socket, uint32_t command,
                                const uint8_t *send_buffer, size_t bytes_to_send,
@@ -48,6 +51,18 @@ libspdm_return_t spdm_device_send_message(void *spdm_context,
 {
     bool result;
 
+#ifndef _WIN32
+    if (m_use_device) {
+        ssize_t written = write(m_device_fd, request, request_size);
+
+        if (written < 0 || (size_t)written != request_size) {
+            EMU_ERR("device write Error - %d\n", errno);
+            return LIBSPDM_STATUS_SEND_FAIL;
+        }
+        return LIBSPDM_STATUS_SUCCESS;
+    }
+#endif /* !_WIN32 */
+
     result = send_platform_data(m_socket, SOCKET_SPDM_COMMAND_NORMAL,
                                 request, (uint32_t)request_size);
     if (!result) {
@@ -64,6 +79,19 @@ libspdm_return_t spdm_device_receive_message(void *spdm_context,
 {
     bool result;
     uint32_t command;
+
+#ifndef _WIN32
+    if (m_use_device) {
+        ssize_t got = read(m_device_fd, *response, *response_size);
+
+        if (got <= 0) {
+            EMU_ERR("device read Error - %d\n", errno);
+            return LIBSPDM_STATUS_RECEIVE_FAIL;
+        }
+        *response_size = (size_t)got;
+        return LIBSPDM_STATUS_SUCCESS;
+    }
+#endif /* !_WIN32 */
 
     result = receive_platform_message(m_socket, &command, *response,
                                       response_size);

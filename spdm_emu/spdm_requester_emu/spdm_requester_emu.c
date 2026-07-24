@@ -6,9 +6,16 @@
 
 #include "spdm_requester_emu.h"
 
+#ifndef _WIN32
+#include <fcntl.h>
+#endif /* !_WIN32 */
+
 uint8_t m_receive_buffer[LIBSPDM_MAX_SENDER_RECEIVER_BUFFER_SIZE];
 
 extern SOCKET m_socket;
+#ifndef _WIN32
+extern int m_device_fd;
+#endif /* !_WIN32 */
 
 extern void *m_spdm_context;
 #if LIBSPDM_FIPS_MODE
@@ -59,12 +66,23 @@ libspdm_return_t do_certificate_provising_via_spdm(uint32_t* session_id);
 
 bool platform_client_routine(uint16_t port_number)
 {
-    SOCKET platform_socket;
+    SOCKET platform_socket = INVALID_SOCKET;
     bool result;
     uint32_t response;
     size_t response_size;
     libspdm_return_t status;
 
+#ifndef _WIN32
+    if (m_use_device) {
+        m_device_fd = open(m_device_path, O_RDWR);
+        if (m_device_fd < 0) {
+            EMU_ERR("Failed to open device %s - %d\n", m_device_path, errno);
+            return false;
+        }
+        EMU_LOG("Opened SPDM device %s\n", m_device_path);
+    }
+    else
+#endif /* !_WIN32 */
     if (m_use_transport_layer == SOCKET_TRANSPORT_TYPE_TCP &&
         m_use_tcp_role_inquiry == SOCKET_TCP_ROLE_INQUIRY) {
         m_socket = CreateSocketAndRoleInquiry(&platform_socket, port_number);
@@ -86,7 +104,8 @@ bool platform_client_routine(uint16_t port_number)
         m_socket = platform_socket;
     }
 
-    if (m_use_transport_layer != SOCKET_TRANSPORT_TYPE_NONE) {
+    if (!m_use_device &&
+        m_use_transport_layer != SOCKET_TRANSPORT_TYPE_NONE) {
         response_size = sizeof(m_receive_buffer);
         result = communicate_platform_data(
             m_socket,
@@ -249,7 +268,8 @@ bool platform_client_routine(uint16_t port_number)
     result = true;
 done:
     response_size = 0;
-    if (!communicate_platform_data(
+    if (!m_use_device &&
+        !communicate_platform_data(
             m_socket, SOCKET_SPDM_COMMAND_SHUTDOWN - m_exe_mode,
             NULL, 0, &response, &response_size, NULL)) {
             return false;
@@ -267,6 +287,16 @@ done:
         free(m_spdm_context);
         free(m_scratch_buffer);
     }
+
+#ifndef _WIN32
+    if (m_use_device) {
+        if (m_device_fd >= 0) {
+            close(m_device_fd);
+            m_device_fd = -1;
+        }
+        return result;
+    }
+#endif /* !_WIN32 */
 
     closesocket(platform_socket);
     if (m_use_transport_layer == SOCKET_TRANSPORT_TYPE_TCP &&
